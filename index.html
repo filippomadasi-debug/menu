@@ -1,1 +1,183 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ricettario</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍲</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
 
+<header class="topbar">
+  <div class="brand">🍲 <span>Ricettario</span></div>
+  <nav class="tabs" id="tabs">
+    <button class="tab is-active" data-view="recap">Recap mensile</button>
+    <button class="tab" data-view="recipes">Ricette</button>
+    <button class="tab" data-view="config">Impostazioni</button>
+  </nav>
+</header>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+
+  <!-- ============ RECAP ============ -->
+  <section id="view-recap" class="view">
+    <div class="month-nav">
+      <button class="btn btn-icon" id="prev-month" title="Mese precedente">‹</button>
+      <h1 id="month-label">—</h1>
+      <button class="btn btn-icon" id="next-month" title="Mese successivo">›</button>
+      <button class="btn btn-ghost" id="today-btn">Oggi</button>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>Piatti più frequenti</h2>
+        <div id="top-recipes" class="bars"></div>
+      </div>
+      <div class="card">
+        <h2>Mix per categoria</h2>
+        <div class="legend">
+          <span><i class="sw sw-adulto"></i>Adulto</span>
+          <span><i class="sw sw-bimbo"></i>Bimbo</span>
+        </div>
+        <div id="category-mix" class="bars"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ripetizioni del mese</h2>
+      <div id="repeats" class="chips"></div>
+    </div>
+
+    <div class="card hidden" id="sides-card">
+      <h2>Contorni usati (cena adulto)</h2>
+      <div id="sides-used" class="chips"></div>
+    </div>
+
+    <h2 class="section-title">Calendario</h2>
+    <div id="calendar" class="calendar"></div>
+  </section>
+
+  <!-- ============ RICETTE ============ -->
+  <section id="view-recipes" class="view hidden">
+    <div class="grid-side">
+      <div class="card">
+        <h2 id="recipe-form-title">Nuova ricetta</h2>
+        <form id="recipe-form" autocomplete="off">
+          <input type="hidden" id="r-id">
+          <label>Nome del piatto *
+            <input type="text" id="r-name" required maxlength="120" placeholder="Es. Pasta al pomodoro">
+          </label>
+          <label>Per chi *
+            <select id="r-target" required>
+              <option value="entrambi">Entrambi</option>
+              <option value="bimbo">Per bimbi</option>
+              <option value="adulti">Per adulti</option>
+            </select>
+          </label>
+          <label>Categoria
+            <select id="r-category"></select>
+          </label>
+          <label>Minuti di preparazione
+            <input type="number" id="r-minutes" min="0" max="600" step="5" placeholder="">
+          </label>
+          <label class="check">
+            <input type="checkbox" id="r-is-side">
+            <span>È un contorno (selezionabile come accompagnamento)</span>
+          </label>
+          <label>Ingredienti
+            <textarea id="r-ingredients" rows="4" placeholder="Uno per riga"></textarea>
+          </label>
+          <label>Note / procedimento
+            <textarea id="r-notes" rows="4" placeholder=""></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="r-save">Salva ricetta</button>
+            <button type="button" class="btn btn-ghost hidden" id="r-cancel">Annulla</button>
+          </div>
+          <p class="form-msg" id="r-msg"></p>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="list-head">
+          <h2>Ricette in archivio (<span id="recipe-count">0</span>)</h2>
+          <div class="filters">
+            <input type="search" id="r-search" placeholder="Cerca…">
+            <select id="r-filter-target">
+              <option value="">Tutti</option>
+              <option value="bimbo">Per bimbi</option>
+              <option value="adulti">Per adulti</option>
+              <option value="entrambi">Entrambi</option>
+            </select>
+            <select id="r-filter-kind">
+              <option value="">Piatti e contorni</option>
+              <option value="main">Solo piatti</option>
+              <option value="side">Solo contorni</option>
+            </select>
+            <select id="r-filter-category"><option value="">Tutte le categorie</option></select>
+          </div>
+        </div>
+        <div id="recipe-list" class="recipe-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CONFIG ============ -->
+  <section id="view-config" class="view hidden">
+    <div class="card card-narrow">
+      <h2>Connessione a Supabase</h2>
+      <p class="muted">Incolla l'URL del progetto e la chiave <code>anon public</code>
+      (Supabase → Project Settings → API). Restano salvati solo in questo browser.</p>
+      <form id="config-form" autocomplete="off">
+        <label>Project URL *
+          <input type="url" id="c-url" required placeholder="https://xxxxxxxxxxxx.supabase.co">
+        </label>
+        <label>Anon public key *
+          <textarea id="c-key" rows="3" required placeholder="eyJhbGciOi..."></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Salva e connetti</button>
+          <button type="button" class="btn btn-ghost" id="c-clear">Cancella credenziali</button>
+        </div>
+        <p class="form-msg" id="c-msg"></p>
+      </form>
+      <hr>
+      <h2>Stato</h2>
+      <ul class="status" id="c-status"></ul>
+      <p class="muted small">Chi ha URL e chiave anon può leggere e scrivere il database:
+      non pubblicare la chiave in un repository pubblico se i dati non devono essere condivisi.</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ MODALE SCELTA PIATTO ============ -->
+<div id="picker" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="picker-title">—</h3>
+      <button class="btn btn-icon" id="picker-close" title="Chiudi">×</button>
+    </div>
+    <div class="picker-tabs hidden" id="picker-tabs">
+      <button class="ptab is-active" data-field="main">Piatto principale</button>
+      <button class="ptab" data-field="side">Contorno</button>
+    </div>
+    <input type="search" id="picker-search" placeholder="Cerca un piatto…">
+    <p class="picker-hint hidden" id="picker-hint"></p>
+    <div id="picker-list" class="picker-list"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="picker-clear">Svuota lo slot</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
