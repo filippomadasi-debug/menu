@@ -254,3 +254,4 @@ label.check input { width: auto; margin: 2px 0 0; flex: 0 0 auto; }
 }
 .pick:hover { background: var(--surface-2); border-color: var(--border); }
 .pick .pm { margin-left: auto; font-size: .78rem; color: var(--text-muted); }
+ 
