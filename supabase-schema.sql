@@ -23,6 +23,7 @@ insert into public.categories (name, sort_order) values
   ('Verdure',           70),
   ('Zuppe e vellutate', 80),
   ('Formaggi',          90),
+  ('Contorni',          95),
   ('Piatto unico',     100),
   ('Frutta',           110),
   ('Colazione',        120),
@@ -48,8 +49,14 @@ create table if not exists public.recipes (
   updated_at    timestamptz not null default now()
 );
 
+-- contorni: ricette selezionabili come accompagnamento (aggiunta successiva,
+-- l'ALTER rende il file rilanciabile anche su un database già creato)
+alter table public.recipes
+  add column if not exists is_side boolean not null default false;
+
 -- nessun doppione sul nome (case-insensitive)
 create unique index if not exists recipes_name_key on public.recipes (lower(name));
+create index if not exists recipes_side_idx on public.recipes (is_side);
 create index if not exists recipes_target_idx   on public.recipes (target);
 create index if not exists recipes_category_idx on public.recipes (category);
 
@@ -84,13 +91,22 @@ create table if not exists public.meals (
   constraint meals_slot_key unique (meal_date, slot, eater)
 );
 
+-- contorno opzionale abbinato al pasto (usato dall'app sulla cena dell'adulto)
+alter table public.meals
+  add column if not exists side_recipe_id uuid references public.recipes(id) on delete set null;
+
 create index if not exists meals_date_idx   on public.meals (meal_date);
 create index if not exists meals_recipe_idx on public.meals (recipe_id);
+create index if not exists meals_side_idx   on public.meals (side_recipe_id);
 
 -- ------------------------------------------------------------
 -- 4. Vista comoda per il recap (opzionale, l'app non la richiede)
 -- ------------------------------------------------------------
-create or replace view public.meals_expanded as
+-- la si elimina prima di ricrearla: CREATE OR REPLACE VIEW non sa inserire
+-- colonne nuove in mezzo a quelle esistenti (errore 42P16)
+drop view if exists public.meals_expanded cascade;
+
+create view public.meals_expanded as
 select
   m.id,
   m.meal_date,
@@ -100,9 +116,12 @@ select
   r.name     as recipe_name,
   r.category as recipe_category,
   r.target   as recipe_target,
+  s.name     as side_name,
+  s.category as side_category,
   m.notes
 from public.meals m
-join public.recipes r on r.id = m.recipe_id;
+join public.recipes r on r.id = m.recipe_id
+left join public.recipes s on s.id = m.side_recipe_id;
 
 -- ------------------------------------------------------------
 -- 5. Row Level Security
