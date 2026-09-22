@@ -21,9 +21,13 @@ e archivio ricette taggate **per bimbi / per adulti / entrambi**.
 1. Crea un progetto su [supabase.com](https://supabase.com) (piano free).
 2. **SQL Editor → New query** → incolla tutto `supabase-schema.sql` → **Run**.
    In fondo vedi il conteggio righe delle tre tabelle: `categories 14`, `recipes 0`, `meals 0`.
-3. **Project Settings → API**, copia:
-   - *Project URL* → `https://xxxx.supabase.co`
-   - *Project API keys → anon public*
+3. Recupera le due credenziali (la dashboard le tiene in due punti diversi):
+   - **Project URL** → *Project Settings* → **Integrations → Data API** (formato `https://xxxx.supabase.co`).
+     Si ricava anche dall'indirizzo della dashboard: `supabase.com/dashboard/project/<ref>`
+     → l'URL è `https://<ref>.supabase.co`.
+   - **Chiave pubblica** → *Project Settings* → **API Keys**: va bene sia la nuova
+     *publishable key* (`sb_publishable_...`) sia la *legacy anon key* (`eyJ...`).
+     Non usare mai `service_role` né una *secret key*: bypassano la RLS.
 
 ## 2. GitHub Pages
 
@@ -60,9 +64,25 @@ in un repo pubblico la chiave sarebbe leggibile da tutti.
   Clic su uno slot → cerca il piatto → assegnato. *Svuota lo slot* lo azzera.
   Il picker mostra solo le ricette compatibili: allo slot del bimbo arrivano
   le ricette taggate «Per bimbi» o «Entrambi».
+- *Contorni*: sulla **cena dell'adulto** lo slot ha una seconda riga `+ contorno…`.
+  Cliccandola si apre il picker sulla tab **Contorno**, che elenca solo le ricette
+  con la spunta «È un contorno». Il contorno si aggancia a un pasto esistente:
+  prima il piatto principale, poi il contorno. Cambiare il piatto principale
+  non perde il contorno; *Svuota lo slot* rimuove entrambi.
+  Per abilitare i contorni su altri slot, aggiungi una voce a `SIDE_SLOTS`
+  in cima a `app.js`, es. `{ slot: 'pranzo', eater: 'adulto' }`.
+- *Contorni usati*: card con il conteggio del mese, visibile solo se ne hai registrati.
 
-**Ricette** — form a sinistra (nome, per chi, categoria, minuti, ingredienti, note),
-archivio a destra con ricerca e filtri per tag e categoria, modifica ed eliminazione.
+**Settimana** — la settimana corrente (lunedì → domenica), con il giorno di oggi
+evidenziato dal badge «oggi» e dal bordo colorato. Sopra, quattro numeri: pasti
+pianificati sui 28 possibili, copertura, slot ancora da riempire da oggi in avanti
+e contorni previsti. Gli slot si compilano esattamente come nel calendario mensile
+e le due viste restano sempre allineate. Frecce `‹ ›` per spostarsi di settimana,
+*Questa settimana* per tornare a quella in corso.
+
+**Ricette** — form a sinistra (nome, per chi, categoria, minuti, «è un contorno»,
+ingredienti, note), archivio a destra con ricerca e filtri per tag, tipo
+(piatti / contorni) e categoria, modifica ed eliminazione.
 Nomi duplicati sono bloccati dal database (confronto case-insensitive).
 
 ## Modello dati
@@ -70,15 +90,22 @@ Nomi duplicati sono bloccati dal database (confronto case-insensitive).
 ```
 categories(name, sort_order)                     → tendina categorie
 recipes(id, name, target, category, prep_minutes,
-        ingredients, notes, is_archived, ...)    → target: bimbo | adulti | entrambi
-meals(id, meal_date, slot, eater, recipe_id)     → slot: pranzo | cena
-                                                    eater: adulto | bimbo
+        is_side, ingredients, notes,              → target: bimbo | adulti | entrambi
+        is_archived, ...)                           is_side: selezionabile come contorno
+meals(id, meal_date, slot, eater, recipe_id,     → slot: pranzo | cena
+      side_recipe_id)                               eater: adulto | bimbo
                                                     UNIQUE(meal_date, slot, eater)
 ```
 
 Il vincolo `UNIQUE` garantisce un solo piatto per slot: riassegnare sovrascrive,
 non duplica. `meals.recipe_id` ha `ON DELETE CASCADE`: eliminando una ricetta
 spariscono anche i pasti in cui compariva (l'app avvisa prima).
+`meals.side_recipe_id` ha invece `ON DELETE SET NULL`: eliminando un contorno
+il pasto resta, senza accompagnamento.
+
+Lo script è rilanciabile: le colonne `is_side` e `side_recipe_id` sono aggiunte
+con `alter table ... add column if not exists`, quindi puoi eseguire di nuovo
+`supabase-schema.sql` anche su un database creato con la versione precedente.
 
 ## Sicurezza
 

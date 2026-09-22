@@ -176,6 +176,15 @@ label.check input { width: auto; margin: 2px 0 0; flex: 0 0 auto; }
 .day-label .dow { color: var(--text-muted); text-transform: capitalize; }
 .day.is-today .day-label .dow { color: var(--accent); font-weight: 600; }
 
+.today-badge {
+  display: inline-block; margin: 3px 0 0 6px;
+  background: var(--accent); color: #fff;
+  font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 7px; border-radius: 999px;
+}
+.week-note { margin: -8px 0 14px; font-size: .88rem; color: var(--text-muted); }
+.week-note.is-current { color: var(--accent); font-weight: 600; }
+
 .slot {
   text-align: left; cursor: pointer; font: inherit;
   background: var(--bg); border: 1px dashed var(--border);
@@ -254,4 +263,3 @@ label.check input { width: auto; margin: 2px 0 0; flex: 0 0 auto; }
 }
 .pick:hover { background: var(--surface-2); border-color: var(--border); }
 .pick .pm { margin-left: auto; font-size: .78rem; color: var(--text-muted); }
- 

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ricettario</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍲</text></svg>">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 
@@ -13,6 +13,7 @@
   <div class="brand">🍲 <span>Ricettario</span></div>
   <nav class="tabs" id="tabs">
     <button class="tab is-active" data-view="recap">Recap mensile</button>
+    <button class="tab" data-view="week">Settimana</button>
     <button class="tab" data-view="recipes">Ricette</button>
     <button class="tab" data-view="config">Impostazioni</button>
   </nav>
@@ -60,6 +61,19 @@
 
     <h2 class="section-title">Calendario</h2>
     <div id="calendar" class="calendar"></div>
+  </section>
+
+  <!-- ============ SETTIMANA ============ -->
+  <section id="view-week" class="view hidden">
+    <div class="month-nav">
+      <button class="btn btn-icon" id="prev-week" title="Settimana precedente">‹</button>
+      <h1 id="week-label">—</h1>
+      <button class="btn btn-icon" id="next-week" title="Settimana successiva">›</button>
+      <button class="btn btn-ghost" id="this-week-btn">Questa settimana</button>
+    </div>
+    <p class="week-note" id="week-note"></p>
+    <div class="kpi-row" id="week-kpi"></div>
+    <div id="week-days" class="calendar"></div>
   </section>
 
   <!-- ============ RICETTE ============ -->
@@ -177,7 +191,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

@@ -21,9 +21,11 @@ const state = {
   sb: null,
   ready: false,
   month: startOfMonth(new Date()),
+  week: startOfWeek(new Date()),
   recipes: [],
   categories: [],
   meals: new Map(),      // "YYYY-MM-DD|slot|eater" -> { id, recipe_id, side_recipe_id }
+  weekMeals: new Map(),  // stessa forma, limitata alla settimana mostrata
   picker: null           // { date, slot, eater, field: 'main' | 'side' }
 };
 
@@ -37,6 +39,18 @@ function esc(s) {
 }
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function daysInMonth(d)  { return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
+function addDays(d, n)   { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+// settimana da lunedì a domenica
+function startOfWeek(d) {
+  const day = d.getDay();               // 0 = domenica
+  const back = day === 0 ? 6 : day - 1;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back);
+}
+function weekDates(start) {
+  const out = [];
+  for (let i = 0; i < 7; i++) out.push(addDays(start, i));
+  return out;
+}
 function iso(d) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -86,7 +100,7 @@ function clearConfig() {
 
 /* ---------------- navigazione ---------------- */
 function showView(name) {
-  ['recap', 'recipes', 'config'].forEach((v) => {
+  ['recap', 'week', 'recipes', 'config'].forEach((v) => {
     $('#view-' + v).classList.toggle('hidden', v !== name);
   });
   $$('#tabs .tab').forEach((t) => t.classList.toggle('is-active', t.dataset.view === name));
@@ -147,14 +161,49 @@ async function loadMeals() {
   });
 }
 
+async function loadWeekMeals() {
+  const from = iso(state.week);
+  const to   = iso(addDays(state.week, 6));
+  const { data, error } = await state.sb
+    .from('meals')
+    .select('id, meal_date, slot, eater, recipe_id, side_recipe_id')
+    .gte('meal_date', from)
+    .lte('meal_date', to);
+  if (error) throw error;
+  state.weekMeals = new Map();
+  (data || []).forEach((m) => {
+    state.weekMeals.set(key(m.meal_date, m.slot, m.eater),
+      { id: m.id, recipe_id: m.recipe_id, side_recipe_id: m.side_recipe_id || null });
+  });
+}
+
+// il pasto può stare nella mappa del mese, in quella della settimana, o in entrambe
+function getMeal(ds, slot, eater) {
+  const k = key(ds, slot, eater);
+  return state.meals.get(k) || state.weekMeals.get(k) || null;
+}
+function inMonth(ds) {
+  return ds.slice(0, 7) === iso(state.month).slice(0, 7);
+}
+function inWeek(ds) {
+  return ds >= iso(state.week) && ds <= iso(addDays(state.week, 6));
+}
+function writeMeal(ds, slot, eater, value) {
+  const k = key(ds, slot, eater);
+  if (inMonth(ds)) { if (value) state.meals.set(k, value); else state.meals.delete(k); }
+  if (inWeek(ds))  { if (value) state.weekMeals.set(k, value); else state.weekMeals.delete(k); }
+}
+
 async function refreshAll() {
   try {
     banner('Caricamento dati…');
     await loadCategories();
     await loadRecipes();
     await loadMeals();
+    await loadWeekMeals();
     banner('');
     renderRecap();
+    renderWeek();
     renderRecipeList();
     renderStatus();
   } catch (e) {
@@ -246,14 +295,9 @@ function renderBars(el, rows, max) {
   }).join('');
 }
 
-function renderCalendar() {
-  const y = state.month.getFullYear(), mo = state.month.getMonth();
-  const todayIso = iso(new Date());
-  const html = [];
-
-  for (let d = 1; d <= daysInMonth(state.month); d++) {
-    const date = new Date(y, mo, d);
+function dayCardHtml(date, opts) {
     const ds = iso(date);
+    const todayIso = iso(new Date());
     const dow = date.getDay();
     const cls = ['day'];
     if (dow === 0 || dow === 6) cls.push('is-weekend');
@@ -262,7 +306,7 @@ function renderCalendar() {
     const slots = [];
     SLOTS.forEach((slot) => {
       EATERS.forEach((eater) => {
-        const m = state.meals.get(key(ds, slot, eater));
+        const m = getMeal(ds, slot, eater);
         const r = m ? recipeById(m.recipe_id) : null;
         const label = `${capitalize(slot)} · ${capitalize(eater)}`;
         const value = r ? r.name : (m ? 'Ricetta rimossa' : '—');
@@ -283,12 +327,66 @@ function renderCalendar() {
       });
     });
 
-    html.push(`<div class="${cls.join(' ')}">
-      <div class="day-label"><span class="dnum">${d}</span><span class="dow">${esc(dowLabel(date))}</span></div>
+    const num = (opts && opts.longLabel)
+      ? `${date.getDate()}/${date.getMonth() + 1}`
+      : String(date.getDate());
+    const badge = ds === todayIso ? '<span class="today-badge">oggi</span>' : '';
+    return `<div class="${cls.join(' ')}">
+      <div class="day-label"><span class="dnum">${esc(num)}</span><span class="dow">${esc(dowLabel(date))}</span>${badge}</div>
       ${slots.join('')}
-    </div>`);
-  }
+    </div>`;
+}
+
+function renderCalendar() {
+  const y = state.month.getFullYear(), mo = state.month.getMonth();
+  const html = [];
+  for (let d = 1; d <= daysInMonth(state.month); d++) html.push(dayCardHtml(new Date(y, mo, d)));
   $('#calendar').innerHTML = html.join('');
+}
+
+/* =============================================================
+   SETTIMANA
+   ============================================================= */
+function weekLabel(start) {
+  const end = addDays(start, 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const a = start.toLocaleDateString('it-IT', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'long' });
+  const b = end.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' });
+  return `${a} – ${b}`;
+}
+
+function renderWeek() {
+  const start = state.week;
+  const dates = weekDates(start);
+  const todayIso = iso(new Date());
+  const isCurrent = inWeek(todayIso);
+
+  $('#week-label').textContent = weekLabel(start);
+  const note = $('#week-note');
+  note.textContent = isCurrent
+    ? 'Settimana in corso'
+    : (iso(start) > todayIso ? 'Settimana futura' : 'Settimana passata');
+  note.classList.toggle('is-current', isCurrent);
+
+  let filled = 0, sides = 0, todo = [];
+  dates.forEach((d) => {
+    const ds = iso(d);
+    SLOTS.forEach((slot) => EATERS.forEach((eater) => {
+      const m = getMeal(ds, slot, eater);
+      if (m) { filled++; if (m.side_recipe_id) sides++; }
+      else if (ds >= todayIso) todo.push(ds);
+    }));
+  });
+  const total = dates.length * SLOTS.length * EATERS.length;
+
+  $('#week-kpi').innerHTML = [
+    { v: `${filled}/${total}`, l: 'Pasti pianificati' },
+    { v: `${total ? Math.round((filled / total) * 100) : 0}%`, l: 'Copertura' },
+    { v: String(todo.length), l: 'Slot da riempire (da oggi)' },
+    { v: String(sides), l: 'Contorni previsti' }
+  ].map((c) => `<div class="kpi"><div class="v">${esc(c.v)}</div><div class="l">${esc(c.l)}</div></div>`).join('');
+
+  $('#week-days').innerHTML = dates.map((d) => dayCardHtml(d, { longLabel: true })).join('');
 }
 
 function renderRecap() {
@@ -343,7 +441,7 @@ function renderPickerList() {
   const hint = $('#picker-hint');
 
   // il contorno si aggancia a un pasto esistente
-  const meal = state.meals.get(key(p.date, p.slot, p.eater));
+  const meal = getMeal(p.date, p.slot, p.eater);
   if (isSide && !meal) {
     hint.textContent = 'Scegli prima il piatto principale, poi torna qui per il contorno.';
     hint.classList.remove('hidden');
@@ -376,8 +474,7 @@ function renderPickerList() {
 async function assignMeal(recipeId) {
   const p = state.picker;
   if (!p) return;
-  const k = key(p.date, p.slot, p.eater);
-  const cur = state.meals.get(k) || null;
+  const cur = getMeal(p.date, p.slot, p.eater);
 
   if (p.field === 'side') {
     if (!cur) return;
@@ -385,7 +482,7 @@ async function assignMeal(recipeId) {
       .from('meals').update({ side_recipe_id: recipeId })
       .eq('meal_date', p.date).eq('slot', p.slot).eq('eater', p.eater);
     if (error) { banner('Salvataggio contorno non riuscito: ' + error.message, true); return; }
-    state.meals.set(k, { id: cur.id, recipe_id: cur.recipe_id, side_recipe_id: recipeId });
+    writeMeal(p.date, p.slot, p.eater, { id: cur.id, recipe_id: cur.recipe_id, side_recipe_id: recipeId });
   } else {
     // l'upsert riscrive la riga: il contorno già scelto va riportato
     const payload = {
@@ -399,7 +496,7 @@ async function assignMeal(recipeId) {
       .select('id, meal_date, slot, eater, recipe_id, side_recipe_id');
     if (error) { banner('Salvataggio pasto non riuscito: ' + error.message, true); return; }
     const row = (data && data[0]) || null;
-    state.meals.set(k, {
+    writeMeal(p.date, p.slot, p.eater, {
       id: row ? row.id : null,
       recipe_id: recipeId,
       side_recipe_id: payload.side_recipe_id
@@ -408,13 +505,13 @@ async function assignMeal(recipeId) {
   banner('');
   closePicker();
   renderRecap();
+  renderWeek();
 }
 
 async function clearMeal() {
   const p = state.picker;
   if (!p) return;
-  const k = key(p.date, p.slot, p.eater);
-  const cur = state.meals.get(k) || null;
+  const cur = getMeal(p.date, p.slot, p.eater);
 
   if (p.field === 'side') {
     if (!cur) { closePicker(); return; }
@@ -422,17 +519,18 @@ async function clearMeal() {
       .from('meals').update({ side_recipe_id: null })
       .eq('meal_date', p.date).eq('slot', p.slot).eq('eater', p.eater);
     if (error) { banner('Rimozione contorno non riuscita: ' + error.message, true); return; }
-    state.meals.set(k, { id: cur.id, recipe_id: cur.recipe_id, side_recipe_id: null });
+    writeMeal(p.date, p.slot, p.eater, { id: cur.id, recipe_id: cur.recipe_id, side_recipe_id: null });
   } else {
     const { error } = await state.sb
       .from('meals').delete()
       .eq('meal_date', p.date).eq('slot', p.slot).eq('eater', p.eater);
     if (error) { banner('Cancellazione non riuscita: ' + error.message, true); return; }
-    state.meals.delete(k);
+    writeMeal(p.date, p.slot, p.eater, null);
   }
   banner('');
   closePicker();
   renderRecap();
+  renderWeek();
 }
 
 /* =============================================================
@@ -508,8 +606,10 @@ async function deleteRecipe(id) {
   if (error) { msg('#r-msg', 'Eliminazione non riuscita: ' + error.message, true); return; }
   await loadRecipes();
   await loadMeals();
+  await loadWeekMeals();
   renderRecipeList();
   renderRecap();
+  renderWeek();
   renderStatus();
   msg('#r-msg', 'Ricetta eliminata.');
 }
@@ -595,13 +695,24 @@ function wire() {
     renderRecap(); renderStatus();
   });
 
-  $('#calendar').addEventListener('click', (e) => {
-    const s = e.target.closest('.slot');
-    if (!s) return;
-    if (!state.ready) { showView('config'); return; }
-    const onSide = !!e.target.closest('.sv-side');
-    openPicker(s.dataset.date, s.dataset.slot, s.dataset.eater, onSide ? 'side' : 'main');
+  ['#calendar', '#week-days'].forEach((sel) => {
+    $(sel).addEventListener('click', (e) => {
+      const s = e.target.closest('.slot');
+      if (!s) return;
+      if (!state.ready) { showView('config'); return; }
+      const onSide = !!e.target.closest('.sv-side');
+      openPicker(s.dataset.date, s.dataset.slot, s.dataset.eater, onSide ? 'side' : 'main');
+    });
   });
+
+  async function gotoWeek(start) {
+    state.week = start;
+    if (state.ready) { await loadWeekMeals(); }
+    renderWeek(); renderStatus();
+  }
+  $('#prev-week').addEventListener('click', () => gotoWeek(addDays(state.week, -7)));
+  $('#next-week').addEventListener('click', () => gotoWeek(addDays(state.week, 7)));
+  $('#this-week-btn').addEventListener('click', () => gotoWeek(startOfWeek(new Date())));
 
   $('#picker-tabs').addEventListener('click', (e) => {
     const t = e.target.closest('.ptab');
@@ -650,10 +761,10 @@ function wire() {
   $('#c-clear').addEventListener('click', () => {
     clearConfig();
     state.ready = false; state.sb = null;
-    state.recipes = []; state.meals = new Map();
+    state.recipes = []; state.meals = new Map(); state.weekMeals = new Map();
     $('#c-url').value = ''; $('#c-key').value = '';
     msg('#c-msg', 'Credenziali rimosse da questo browser.');
-    renderRecap(); renderRecipeList(); renderStatus();
+    renderRecap(); renderWeek(); renderRecipeList(); renderStatus();
     banner('Configura URL e chiave anon per collegare il database.');
   });
 }
@@ -671,9 +782,9 @@ function wire() {
   } else {
     banner('Primo avvio: inserisci URL del progetto e chiave anon in Impostazioni.');
     renderRecap();
+    renderWeek();
     renderRecipeList();
     renderStatus();
     showView('config');
   }
 })();
- 
